@@ -1,0 +1,5 @@
+# Terraform Backend Configuration
+# Copy this file to backend.tfvars and update with your actual values
+
+bucket = "your-terraform-state-bucket-name"
+prefix = "bigquery-filtered-views/terraform.tfstate"

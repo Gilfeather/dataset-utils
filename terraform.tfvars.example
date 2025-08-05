@@ -1,0 +1,362 @@
+# GCP Configuration
+project_id = "your-gcp-project-id"
+region     = "asia-northeast1"
+
+
+
+# View Configuration
+view_prefix = "filtered_"
+
+# Output Datasets Configuration
+output_datasets_config = {
+  "main" = {
+    dataset_id  = "filtered_views"
+    description = "Main filtered views dataset"
+    months_back = 18  # Default 18 months
+    labels = {
+      environment = "production"
+      team        = "data"
+    }
+  }
+  
+  "analytics" = {
+    dataset_id  = "analytics_filtered"
+    description = "Analytics filtered views with longer retention"
+    months_back = 24  # 24 months for analytics
+    labels = {
+      team        = "analytics"
+      environment = "production"
+    }
+  }
+  
+  "finance" = {
+    dataset_id  = "finance_filtered"
+    description = "Finance filtered views with shorter retention"
+    months_back = 12  # 12 months for finance
+    labels = {
+      team        = "finance"
+      environment = "production"
+      sensitive   = "true"
+    }
+  }
+}
+
+# Source Datasets and Tables Configuration
+source_datasets_config = {
+  # Analytics data from current project -> analytics dataset (24 months)
+  "raw_analytics" = {
+    target_dataset_key = "analytics"
+    description       = "Raw analytics data"
+    tables = {
+      "user_behavior" = {
+        source_table_id = "user_events"
+        view_name      = "user_behavior"
+        filter_columns = [
+          {
+            column_name = "event_type"
+            condition   = "IN ('page_view', 'click', 'scroll')"
+          },
+          {
+            column_name = "user_id"
+            condition   = "IS NOT NULL"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "session_duration > 30"
+        description     = "User behavior events with valid sessions"
+      }
+      
+      "conversion_funnel" = {
+        source_table_id = "conversion_events"
+        view_name      = "conversion_funnel"
+        filter_columns = [
+          {
+            column_name = "funnel_step"
+            condition   = "IN ('landing', 'product_view', 'add_to_cart', 'checkout', 'purchase')"
+          }
+        ]
+        additional_where = "user_id IS NOT NULL"
+        description     = "Conversion funnel analysis data"
+      }
+      
+      "page_tracking" = {
+        source_table_id = "page_tracking"
+        view_name      = "page_views"
+        filter_columns = [
+          {
+            column_name = "page_type"
+            condition   = "IS NOT NULL"
+          },
+          {
+            column_name = "view_duration"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "bot_traffic = false"
+        description     = "Valid page views excluding bot traffic"
+      }
+    }
+  }
+  
+  # Marketing data from external project -> main dataset (18 months)
+  "campaign_data" = {
+    target_dataset_key = "main"
+    source_project_id  = "marketing-data-prod"
+    description        = "Marketing campaign data"
+    tables = {
+      "campaigns" = {
+        source_table_id = "raw_campaigns"
+        view_name      = "campaign_performance"
+        filter_columns = [
+          {
+            column_name = "campaign_status"
+            condition   = "= 'active'"
+          },
+          {
+            column_name = "budget"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "start_date >= '2024-01-01'"
+        description     = "Active marketing campaigns with budget"
+      }
+      
+      "ad_performance" = {
+        source_table_id = "ad_metrics"
+        view_name      = "ad_performance"
+        filter_columns = [
+          {
+            column_name = "impressions"
+            condition   = "> 0"
+          },
+          {
+            column_name = "clicks"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "platform IN ('google', 'facebook', 'twitter')"
+        description     = "Ad performance metrics from major platforms"
+      }
+    }
+  }
+  
+  # Ad impression data from external project -> main dataset (18 months)
+  "ad_data" = {
+    target_dataset_key = "main"
+    source_project_id  = "marketing-data-prod"
+    description        = "Ad impression data"
+    tables = {
+      "impressions" = {
+        source_table_id = "raw_impressions"
+        view_name      = "ad_impressions"
+        filter_columns = [
+          {
+            column_name = "impression_count"
+            condition   = "> 0"
+          },
+          {
+            column_name = "ad_status"
+            condition   = "= 'served'"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "platform IN ('google', 'facebook', 'twitter')"
+        description     = "Served ad impressions from major platforms"
+      }
+    }
+  }
+  
+  # Email marketing data from current project -> main dataset (18 months)
+  "email_data" = {
+    target_dataset_key = "main"
+    description        = "Email marketing data"
+    tables = {
+      "email_sends" = {
+        source_table_id = "email_sends"
+        view_name      = "email_campaigns"
+        filter_columns = [
+          {
+            column_name = "send_status"
+            condition   = "= 'delivered'"
+          },
+          {
+            column_name = "recipient_email"
+            condition   = "IS NOT NULL"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "unsubscribed = false"
+        description     = "Successfully delivered emails to active subscribers"
+      }
+    }
+  }
+  
+  # Financial transaction data from external project -> finance dataset (12 months, fixed date)
+  "transaction_data" = {
+    target_dataset_key = "finance"
+    source_project_id  = "finance-data-prod"
+    description        = "Financial transaction data"
+    tables = {
+      "transactions" = {
+        source_table_id = "raw_transactions"
+        view_name      = "transactions"
+        filter_columns = [
+          {
+            column_name = "transaction_status"
+            condition   = "= 'completed'"
+          },
+          {
+            column_name = "amount"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "currency_code = 'JPY' AND payment_method IS NOT NULL"
+        description     = "Completed transactions in JPY"
+      }
+      
+      "refunds" = {
+        source_table_id = "refund_transactions"
+        view_name      = "refunds"
+        filter_columns = [
+          {
+            column_name = "refund_status"
+            condition   = "= 'processed'"
+          },
+          {
+            column_name = "refund_amount"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "reason IS NOT NULL"
+        description     = "Processed refunds with valid reasons"
+      }
+    }
+  }
+  
+  # Revenue data from external project -> finance dataset (12 months, fixed date)
+  "revenue_data" = {
+    target_dataset_key = "finance"
+    source_project_id  = "finance-data-prod"
+    description        = "Revenue summary data"
+    tables = {
+      "daily_revenue" = {
+        source_table_id = "daily_revenue"
+        view_name      = "revenue_summary"
+        filter_columns = [
+          {
+            column_name = "revenue_amount"
+            condition   = "> 0"
+          },
+          {
+            column_name = "is_validated"
+            condition   = "= true"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "business_unit IS NOT NULL"
+        description     = "Validated daily revenue by business unit"
+      }
+    }
+  }
+  
+  # Billing data from current project -> finance dataset (12 months, fixed date)
+  "billing_data" = {
+    target_dataset_key = "finance"
+    description        = "Billing and invoice data"
+    tables = {
+      "invoices" = {
+        source_table_id = "raw_invoices"
+        view_name      = "invoices"
+        filter_columns = [
+          {
+            column_name = "invoice_status"
+            condition   = "IN ('paid', 'pending')"
+          },
+          {
+            column_name = "invoice_amount"
+            condition   = "> 0"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "customer_id IS NOT NULL"
+        description     = "Valid invoices with positive amounts"
+      }
+    }
+  }
+  
+  # System monitoring data from current project -> main dataset (18 months)
+  "system_monitoring" = {
+    target_dataset_key = "main"
+    description        = "System monitoring and performance data"
+    tables = {
+      "application_logs" = {
+        source_table_id = "application_logs"
+        view_name      = "system_logs"
+        filter_columns = [
+          {
+            column_name = "log_level"
+            condition   = "IN ('ERROR', 'WARN', 'INFO')"
+          },
+          {
+            column_name = "service_name"
+            condition   = "IS NOT NULL"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "environment = 'production'"
+        description     = "Production system logs with valid service names"
+      }
+      
+      "performance_data" = {
+        source_table_id = "performance_data"
+        view_name      = "performance_metrics"
+        filter_columns = [
+          {
+            column_name = "response_time"
+            condition   = "> 0"
+          },
+          {
+            column_name = "status_code"
+            condition   = "< 500"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "endpoint IS NOT NULL"
+        description     = "Performance metrics for successful requests"
+      }
+    }
+  }
+  
+  # Error tracking data from current project -> main dataset (18 months)
+  "error_logs" = {
+    target_dataset_key = "main"
+    description        = "Application error tracking data"
+    tables = {
+      "application_errors" = {
+        source_table_id = "application_errors"
+        view_name      = "error_tracking"
+        filter_columns = [
+          {
+            column_name = "error_level"
+            condition   = "IN ('ERROR', 'CRITICAL')"
+          },
+          {
+            column_name = "stack_trace"
+            condition   = "IS NOT NULL"
+            operator    = "AND"
+          }
+        ]
+        additional_where = "resolved = false"
+        description     = "Unresolved critical errors with stack traces"
+      }
+    }
+  }
+  
+  # Add more source datasets as needed...
+  # You can add up to 90 tables across different source datasets
+}
